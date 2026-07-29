@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 
 from strategies import STRATEGIES, backtester
 
-st.set_page_config(page_title="Backtest Trading", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Backtest Trading", page_icon="static/icon-192.png", layout="wide")
 
 
 # ------------------------------------------------------- PWA + confort mobile
@@ -136,10 +136,10 @@ def chercher_actifs(requete: str) -> dict:
     return {lib: sym for _, lib, sym in lignes[:12]}
 
 # ---------------------------------------------------------------- Barre latérale
-st.sidebar.title("⚙️ Réglages")
+st.sidebar.title("Réglages")
 
 recherche = st.sidebar.text_input(
-    "🔍 Cherche n'importe quel actif", value="",
+    "Rechercher un actif", value="",
     placeholder="ex. LVMH, Total, Netflix, or, EUR/USD…",
     help="Tape un nom d'entreprise ou un symbole. La recherche couvre tout le marché mondial : "
          "actions, ETF, cryptos, indices, devises, matières premières.")
@@ -147,17 +147,17 @@ recherche = st.sidebar.text_input(
 if recherche.strip():
     resultats = chercher_actifs(recherche.strip())
     if resultats:
-        choix_actif = st.sidebar.selectbox(f"🎯 {len(resultats)} résultat(s) trouvé(s)",
+        choix_actif = st.sidebar.selectbox(f"{len(resultats)} résultat(s)",
                                            list(resultats.keys()))
         ticker = resultats[choix_actif]
         nom_actif = choix_actif
     else:
         st.sidebar.warning("Rien trouvé — essaie un autre nom ou choisis un favori.")
-        choix_actif = st.sidebar.selectbox("⭐ Favoris", list(ACTIFS.keys()), index=0)
+        choix_actif = st.sidebar.selectbox("Favoris", list(ACTIFS.keys()), index=0)
         ticker = ACTIFS[choix_actif]
         nom_actif = choix_actif
 else:
-    choix_actif = st.sidebar.selectbox("⭐ Favoris", list(ACTIFS.keys()), index=0)
+    choix_actif = st.sidebar.selectbox("Favoris", list(ACTIFS.keys()), index=0)
     ticker = ACTIFS[choix_actif]
     nom_actif = choix_actif
 
@@ -168,7 +168,7 @@ periode = st.sidebar.selectbox(
 st.sidebar.markdown("---")
 nom_strat = st.sidebar.selectbox("Stratégie", list(STRATEGIES.keys()), index=0)
 strat = STRATEGIES[nom_strat]
-st.sidebar.caption("💡 " + strat["explication"])
+st.sidebar.caption(strat["explication"])
 
 # curseurs propres a la strategie choisie
 params = {}
@@ -184,16 +184,16 @@ capital = st.sidebar.number_input(f"Capital de départ ({dev})", 1000, 1_000_000
 frais = st.sidebar.slider("Frais par opération (%)", 0.0, 1.0, 0.1, 0.05,
                           help="Ce que ton courtier prélève à chaque achat ou vente. 0,1 % est courant.")
 
-stop_actif = st.sidebar.checkbox("🛡️ Activer le stop-loss", value=False,
+stop_actif = st.sidebar.checkbox("Activer le stop-loss", value=False,
                                  help="Vente automatique dès que la perte dépasse un seuil. "
                                       "C'est la base de la gestion du risque chez les traders pro.")
 stop = st.sidebar.slider("Vendre si la perte dépasse (%)", 1, 30, 8, disabled=not stop_actif) if stop_actif else 0
 if stop_actif:
-    st.sidebar.caption(f"🛡️ Chaque position est coupée automatiquement à −{stop} % "
+    st.sidebar.caption(f"Chaque position est coupée automatiquement à −{stop} % "
                        "sous son prix d'achat. On attend ensuite un nouveau signal pour revenir.")
 
 # ---------------------------------------------------------------- En-tête
-st.title("📈 Backtest de stratégies de trading")
+st.title("Backtest de stratégies de trading")
 st.caption("Teste des stratégies classiques sur de vrais prix historiques — sans risquer d'argent réel.")
 
 close = charger_prix(ticker, periode)
@@ -206,7 +206,10 @@ r = backtester(close, position_brute, capital, frais, stop)
 r_sans_stop = backtester(close, position_brute, capital, frais, 0) if stop else None
 
 onglet_bt, onglet_trades, onglet_strats, onglet_actifs = st.tabs(
-    ["📊 Résultat", "📋 Détail des trades", "🏆 Quelle stratégie gagne ?", "🌍 Comparer des actifs"])
+    [":material/query_stats: Résultat",
+     ":material/table_rows: Détail des trades",
+     ":material/emoji_events: Classement des stratégies",
+     ":material/compare_arrows: Comparer des actifs"])
 
 # ================================================================= Onglet 1 : résultat
 with onglet_bt:
@@ -220,28 +223,31 @@ with onglet_bt:
     c5.metric("Trades gagnants", taux)
 
     if r["perf_strat"] > r["perf_hold"]:
-        st.success(f"✅ Sur cette période, **{nom_strat}** a fait mieux que garder {nom_actif} sans rien faire "
-                   f"({r['perf_strat']:+.1%} contre {r['perf_hold']:+.1%}).")
+        st.success(f"Sur cette période, **{nom_strat}** a fait mieux que garder {nom_actif} sans rien faire "
+                   f"({r['perf_strat']:+.1%} contre {r['perf_hold']:+.1%}).",
+                   icon=":material/check_circle:")
     else:
-        st.warning(f"❌ Sur cette période, mieux valait simplement garder {nom_actif} "
+        st.warning(f"Sur cette période, mieux valait simplement garder {nom_actif} "
                    f"({r['perf_hold']:+.1%} contre {r['perf_strat']:+.1%} pour la stratégie). "
-                   "C'est fréquent — et c'est exactement ce qu'un backtest sert à découvrir avant de risquer de l'argent.")
+                   "C'est fréquent — et c'est exactement ce qu'un backtest sert à découvrir avant de risquer de l'argent.",
+                   icon=":material/cancel:")
 
     if r_sans_stop is not None:
         ecart = r["perf_strat"] - r_sans_stop["perf_strat"]
         ecart_dd = r["drawdown_strat"] - r_sans_stop["drawdown_strat"]
         verdict_stop = ("a **amélioré** le gain" if ecart > 0 else "a **coûté** du gain")
         st.info(
-            f"🛡️ **Effet du stop-loss à −{stop} %** : le gain passe de "
+            f"**Effet du stop-loss à −{stop} %** : le gain passe de "
             f"{r_sans_stop['perf_strat']:+.1%} (sans stop) à **{r['perf_strat']:+.1%}** (avec stop) — "
             f"il {verdict_stop} de {abs(ecart):.1%}. "
             f"Côté risque, la pire baisse passe de {r_sans_stop['drawdown_strat']:.1%} à "
             f"**{r['drawdown_strat']:.1%}**"
             + (f" (soit {abs(ecart_dd):.1%} de risque en moins)." if ecart_dd > 0
                else ".")
-            + "  \n*Le stop protège des grosses pertes, mais coupe parfois des positions qui seraient reparties à la hausse.*")
+            + "  \n*Le stop protège des grosses pertes, mais coupe parfois des positions qui seraient reparties à la hausse.*",
+            icon=":material/shield:")
 
-    st.subheader("💰 Évolution du capital")
+    st.subheader("Évolution du capital")
     fig_eq = go.Figure()
     fig_eq.add_trace(go.Scatter(x=r["eq_strat"].index, y=r["eq_strat"], name="Stratégie",
                                 line=dict(color=VERT, width=2)))
@@ -251,7 +257,7 @@ with onglet_bt:
                          hovermode="x unified", legend=dict(orientation="h", y=1.12))
     st.plotly_chart(fig_eq, width='stretch')
 
-    st.subheader("📊 Prix, indicateurs et signaux")
+    st.subheader("Prix, indicateurs et signaux")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=close.index, y=close, name="Prix", line=dict(color=BLEU, width=1.6)))
     couleurs_ind = [ORANGE, VIOLET, "#0e8a9c"]
@@ -283,7 +289,7 @@ with onglet_bt:
 
 # ================================================================= Onglet 2 : trades
 with onglet_trades:
-    st.subheader(f"📋 Les {r['nb_trades']} trades de la stratégie, un par un")
+    st.subheader(f"Les {r['nb_trades']} trades de la stratégie, un par un")
     if r["nb_trades"] == 0:
         st.info("Cette stratégie n'a déclenché aucun trade sur la période choisie.")
     else:
@@ -301,7 +307,7 @@ with onglet_trades:
 
 # ================================================================= Onglet 3 : comparateur de stratégies
 with onglet_strats:
-    st.subheader(f"🏆 Toutes les stratégies sur {nom_actif} ({periode.replace('y', ' an(s)')})")
+    st.subheader(f"Toutes les stratégies sur {nom_actif} ({periode.replace('y', ' an(s)')})")
     st.caption("Chaque stratégie est testée avec ses réglages par défaut, frais inclus. "
                "La ligne « Ne rien faire » sert de référence.")
     lignes = []
@@ -313,16 +319,16 @@ with onglet_strats:
         lignes.append({"Stratégie": nom, "Gain": res["perf_strat"],
                        "Pire baisse": res["drawdown_strat"], "Trades": res["nb_trades"]})
         courbes[nom] = res["eq_strat"]
-    lignes.append({"Stratégie": "🛋️ Ne rien faire (buy & hold)", "Gain": r["perf_hold"],
+    lignes.append({"Stratégie": "Ne rien faire (buy & hold)", "Gain": r["perf_hold"],
                    "Pire baisse": r["drawdown_hold"], "Trades": 0})
 
     tableau = pd.DataFrame(lignes).sort_values("Gain", ascending=False).reset_index(drop=True)
-    tableau.insert(0, "Rang", ["🥇", "🥈", "🥉"] + [str(i) for i in range(4, len(tableau) + 1)])
+    tableau.insert(0, "Rang", [str(i) for i in range(1, len(tableau) + 1)])
     meilleure = tableau.iloc[0]["Stratégie"]
     st.dataframe(tableau.style.format({"Gain": "{:+.1%}", "Pire baisse": "{:.1%}"}),
                  width='stretch', hide_index=True)
     st.success(f"Sur cette période et cet actif, la meilleure approche était : **{meilleure}**. "
-               "⚠️ Ça ne garantit rien pour l'avenir — change d'actif et de période pour voir si elle reste bonne.")
+               "Ça ne garantit rien pour l'avenir — change d'actif et de période pour voir si elle reste bonne.")
 
     fig_cmp = go.Figure()
     fig_cmp.add_trace(go.Scatter(x=r["eq_hold"].index, y=r["eq_hold"], name="Ne rien faire",
@@ -335,7 +341,7 @@ with onglet_strats:
 
 # ================================================================= Onglet 4 : comparateur d'actifs
 with onglet_actifs:
-    st.subheader(f"🌍 La stratégie « {nom_strat} » sur plusieurs actifs")
+    st.subheader(f"La stratégie « {nom_strat} » sur plusieurs actifs")
     # l'actif courant (meme trouve par recherche) + deux references classiques
     options_multi = dict(ACTIFS)
     if nom_actif not in options_multi:
@@ -355,8 +361,8 @@ with onglet_actifs:
             res = backtester(serie, pos, capital, frais, stop)
             lignes.append({"Actif": nom, "Stratégie": res["perf_strat"],
                            "Ne rien faire": res["perf_hold"],
-                           "Verdict": "✅ stratégie gagne" if res["perf_strat"] > res["perf_hold"]
-                                      else "❌ mieux valait garder"})
+                           "Verdict": "Stratégie" if res["perf_strat"] > res["perf_hold"]
+                                      else "Buy & hold"})
         if lignes:
             df_multi = pd.DataFrame(lignes)
             st.dataframe(df_multi.style.format({"Stratégie": "{:+.1%}", "Ne rien faire": "{:+.1%}"}),
@@ -370,5 +376,5 @@ with onglet_actifs:
                                   margin=dict(l=0, r=0, t=10, b=0), legend=dict(orientation="h", y=1.15))
             st.plotly_chart(fig_bar, width='stretch')
 
-st.caption("⚠️ Résultats passés simulés, frais inclus mais hors impôts et écarts d'exécution. "
+st.caption("Résultats passés simulés, frais inclus mais hors impôts et écarts d'exécution. "
            "Ceci n'est pas un conseil d'investissement.")
