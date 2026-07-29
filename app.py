@@ -91,15 +91,28 @@ CSS = f"""
   [data-testid="stDataFrame"], .mono {{ font-variant-numeric: tabular-nums; }}
 
   /* ---------- en-tete facon salle de marche ---------- */
-  .entete {{ display: flex; align-items: flex-end; justify-content: space-between;
-             gap: 1rem; flex-wrap: wrap;
-             border-bottom: 1px solid {BORD}; padding-bottom: .9rem; margin-bottom: 1.3rem; }}
+  .entete {{ border-bottom: 1px solid {BORD}; padding-bottom: .9rem; margin-bottom: 1.3rem; }}
+  .entete-haut {{ display: flex; align-items: flex-end; justify-content: space-between;
+                  gap: 1.2rem; flex-wrap: wrap; }}
   .entete .surtitre {{ font-size: .68rem; letter-spacing: .16em; text-transform: uppercase;
                        color: {TEXTE3}; font-weight: 600; margin-bottom: .3rem; }}
   .entete h1 {{ font-size: 1.55rem; font-weight: 600; letter-spacing: -.02em;
                 margin: 0; color: {TEXTE}; line-height: 1.15; }}
   .entete .sous {{ font-size: .82rem; color: {TEXTE2}; margin-top: .35rem; }}
-  .jetons {{ display: flex; gap: .4rem; flex-wrap: wrap; }}
+  /* Cotation : ce qu'un terminal affiche en premier apres le nom de l'instrument. */
+  .cotation {{ text-align: right; }}
+  .cotation .prix {{ font-family: {MONO}; font-size: 1.72rem; font-weight: 600;
+                     color: {TEXTE}; line-height: 1.1; letter-spacing: -.02em; }}
+  .cotation .prix .dev {{ font-size: .95rem; color: {TEXTE3}; margin-left: .18rem;
+                          font-weight: 500; }}
+  .cotation .var {{ font-family: {MONO}; font-size: .88rem; font-weight: 600;
+                    margin-top: .22rem; }}
+  .cotation .var.hausse {{ color: {VERT}; }}
+  .cotation .var.baisse {{ color: {ROUGE}; }}
+  .cotation .ref {{ font-size: .72rem; color: {TEXTE3}; margin-top: .3rem;
+                    font-variant-numeric: tabular-nums; }}
+
+  .jetons {{ display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .9rem; }}
   .jeton {{ font-size: .72rem; padding: .3rem .6rem; border-radius: 6px;
             border: 1px solid {BORD}; background: {SURFACE2}; color: {TEXTE2};
             white-space: nowrap; }}
@@ -184,8 +197,12 @@ CSS = f"""
     [data-testid="stMetricValue"] {{ font-size: 1.1rem !important; }}
     [data-testid="stMetricLabel"] p {{ font-size: .62rem !important; }}
     [data-testid="stMetricDelta"] {{ font-size: .72rem !important; }}
-    .entete {{ align-items: flex-start; }}
+    .entete-haut {{ align-items: flex-start; gap: .6rem; }}
     .entete h1 {{ font-size: 1.2rem; }}
+    /* la cotation passe sous le nom et s'aligne a gauche comme le reste */
+    .cotation {{ text-align: left; }}
+    .cotation .prix {{ font-size: 1.4rem; }}
+    .jetons {{ margin-top: .7rem; }}
     h2, h3 {{ font-size: .9rem !important; }}
     [data-testid="stTabs"] [role="tablist"] {{ overflow-x: auto; scrollbar-width: none; }}
     [data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar {{ display: none; }}
@@ -399,32 +416,7 @@ if stop_actif:
     st.sidebar.caption(f"Chaque position est coupée automatiquement à −{stop} % "
                        "sous son prix d'achat. On attend ensuite un nouveau signal pour revenir.")
 
-# ---------------------------------------------------------------- En-tête
-# Un terminal annonce d'abord QUEL instrument est a l'ecran, puis les parametres
-# du test sous forme de jetons : on lit la configuration d'un coup d'oeil.
-libelle_periode = {"1y": "1 an", "2y": "2 ans", "5y": "5 ans", "10y": "10 ans"}[periode]
-jetons = [
-    f"Période <b>{libelle_periode}</b>",
-    f"Capital <b>{capital:,.0f} {dev}</b>".replace(",", " "),
-    f"Frais <b>{frais:g} %</b>",
-    (f'<span class="jeton on">Stop-loss <b>−{stop} %</b></span>' if stop_actif
-     else "Stop-loss <b>désactivé</b>"),
-]
-st.markdown(
-    f"""
-    <div class="entete">
-      <div>
-        <div class="surtitre">Backtest de stratégie</div>
-        <h1>{nom_actif}</h1>
-        <div class="sous">{nom_strat}</div>
-      </div>
-      <div class="jetons">
-        {''.join(j if j.startswith('<span') else f'<span class="jeton">{j}</span>' for j in jetons)}
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True)
-
+# ---------------------------------------------------------------- Données
 attente = ecran_attente(f"Récupération des cours de {nom_actif}…")
 close = charger_prix(ticker, periode)
 attente.empty()
@@ -437,6 +429,51 @@ if close.empty:
              "recharge la page dans quelques secondes, ou vérifie le symbole.",
              icon=":material/cloud_off:")
     st.stop()
+
+# ---------------------------------------------------------------- En-tête
+# Un terminal annonce l'instrument, son cours, puis la configuration du test.
+def fr(x: float, dec: int = 2) -> str:
+    """Nombre a la francaise : espace fine pour les milliers, virgule decimale."""
+    return f"{x:,.{dec}f}".replace(",", " ").replace(".", ",")
+
+
+cours_actuel, cours_debut = float(close.iloc[-1]), float(close.iloc[0])
+var_abs = cours_actuel - cours_debut
+var_pct = cours_actuel / cours_debut - 1
+sens = "hausse" if var_abs >= 0 else "baisse"
+date_debut = close.index[0].strftime("%d/%m/%Y")
+date_fin = close.index[-1].strftime("%d/%m/%Y")
+
+libelle_periode = {"1y": "1 an", "2y": "2 ans", "5y": "5 ans", "10y": "10 ans"}[periode]
+jetons = [
+    f"Période <b>{libelle_periode}</b>",
+    f"Capital <b>{fr(capital, 0)} {dev}</b>",
+    f"Frais <b>{frais:g} %</b>",
+    (f'<span class="jeton on">Stop-loss <b>−{stop} %</b></span>' if stop_actif
+     else "Stop-loss <b>désactivé</b>"),
+]
+st.markdown(
+    f"""
+    <div class="entete">
+      <div class="entete-haut">
+        <div>
+          <div class="surtitre">Backtest de stratégie</div>
+          <h1>{nom_actif}</h1>
+          <div class="sous">{nom_strat}</div>
+        </div>
+        <div class="cotation">
+          <div class="prix">{fr(cours_actuel)}<span class="dev">{dev}</span></div>
+          <div class="var {sens}">{'+' if var_abs >= 0 else '−'}{fr(abs(var_abs))} {dev}
+              ({'+' if var_pct >= 0 else '−'}{fr(abs(var_pct) * 100, 1)} %)</div>
+          <div class="ref">clôture du {date_fin} · départ {fr(cours_debut)} {dev} le {date_debut}</div>
+        </div>
+      </div>
+      <div class="jetons">
+        {''.join(j if j.startswith('<span') else f'<span class="jeton">{j}</span>' for j in jetons)}
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True)
 
 position_brute, indicateurs = strat["fn"](close, **params)
 r = backtester(close, position_brute, capital, frais, stop)
@@ -603,7 +640,12 @@ with onglet_actifs:
                 continue
             pos, _ = strat["fn"](serie, **params)
             res = backtester(serie, pos, capital, frais, stop)
-            lignes.append({"Actif": nom, "Stratégie": res["perf_strat"],
+            d = devise_de(options_multi[nom])
+            lignes.append({"Actif": nom,
+                           "Cours actuel": f"{fr(float(serie.iloc[-1]))} {d}",
+                           "Au départ": f"{fr(float(serie.iloc[0]))} {d}",
+                           "Variation": f"{float(serie.iloc[-1]) / float(serie.iloc[0]) - 1:+.1%}",
+                           "Stratégie": res["perf_strat"],
                            "Ne rien faire": res["perf_hold"],
                            "Verdict": "Stratégie" if res["perf_strat"] > res["perf_hold"]
                                       else "Buy & hold"})
@@ -613,7 +655,8 @@ with onglet_actifs:
                 zebrer(df_multi).format({"Stratégie": "{:+.1%}", "Ne rien faire": "{:+.1%}"})
                                 .map(lambda v: f"color: {VERT}; font-weight: 600" if isinstance(v, float) and v > 0
                                      else (f"color: {ROUGE}; font-weight: 600" if isinstance(v, float) and v < 0 else ""),
-                                     subset=["Stratégie", "Ne rien faire"]),
+                                     subset=["Stratégie", "Ne rien faire"])
+                                .map(colorer_signe, subset=["Variation"]),
                 width='stretch', hide_index=True)
             fig_bar = go.Figure()
             fig_bar.add_trace(go.Bar(x=df_multi["Actif"], y=df_multi["Stratégie"],
