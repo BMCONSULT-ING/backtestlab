@@ -1,0 +1,21 @@
+# Configuration de deploiement Render (Blueprint).
+# Render lit ce fichier automatiquement et cree le service sans reglage manuel.
+services:
+  - type: web
+    name: backtest-trading
+    runtime: python
+    plan: free
+    region: frankfurt          # serveur en Europe (latence plus faible depuis la France)
+
+    buildCommand: pip install -r requirements.txt
+
+    # Streamlit doit ecouter sur le port fourni par Render et sur toutes les interfaces,
+    # sinon le service est considere comme "ne repond pas" et le deploiement echoue.
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+
+    # Endpoint de sante interne de Streamlit : evite les faux "service down".
+    healthCheckPath: /_stcore/health
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.0"
