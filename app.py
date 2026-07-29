@@ -237,6 +237,26 @@ def rubrique(titre: str):
     st.sidebar.markdown(f'<div class="rubrique">{titre}</div>', unsafe_allow_html=True)
 
 
+# Explications des curseurs propres aux strategies. Elles vivent ici plutot que
+# dans strategies.py : ce sont des textes d'interface, pas de la logique metier.
+AIDE_PARAMS = {
+    "courte": "Moyenne des prix sur les N derniers jours. Plus le nombre est petit, "
+              "plus elle colle aux mouvements récents — et plus elle donne de faux signaux.",
+    "longue": "Moyenne sur une durée plus large : elle donne la tendance de fond. "
+              "Le signal d'achat naît quand la moyenne courte la dépasse.",
+    "periode": "Nombre de jours utilisés pour calculer le RSI. 14 est la valeur "
+               "de référence, utilisée depuis les années 1970.",
+    "achat": "Sous ce niveau, le RSI indique un actif « survendu » : il a beaucoup "
+             "baissé et pourrait rebondir. La stratégie achète.",
+    "vente": "Au-dessus de ce niveau, le RSI indique un actif « suracheté » : il a "
+             "beaucoup monté et pourrait corriger. La stratégie vend.",
+    "fenetre": "On achète quand le prix dépasse son plus haut des N derniers jours. "
+               "Une fenêtre large ne retient que les vraies ruptures de tendance.",
+    "sortie": "On sort dès que le prix casse son plus bas des N derniers jours, "
+              "pour ne pas accompagner la baisse jusqu'en bas.",
+}
+
+
 # st.dataframe rend ses cellules sur un canvas : le CSS ne peut pas les atteindre.
 # Les zebrures et les couleurs doivent donc passer par le Styler pandas.
 def zebrer(df: pd.DataFrame):
@@ -366,35 +386,49 @@ recherche = st.sidebar.text_input(
 if recherche.strip():
     resultats = chercher_actifs(recherche.strip())
     if resultats:
-        choix_actif = st.sidebar.selectbox(f"{len(resultats)} résultat(s)",
-                                           list(resultats.keys()))
+        choix_actif = st.sidebar.selectbox(
+            f"{len(resultats)} résultat(s)", list(resultats.keys()),
+            help="Chaque ligne indique le type d'actif et sa place de cotation. "
+                 "Un même titre peut être coté sur plusieurs bourses, dans des "
+                 "devises différentes.")
         ticker = resultats[choix_actif]
         nom_actif = choix_actif
     else:
         st.sidebar.warning("Rien trouvé — essaie un autre nom ou choisis un favori.")
-        choix_actif = st.sidebar.selectbox("Favoris", list(ACTIFS.keys()), index=0)
+        choix_actif = st.sidebar.selectbox(
+            "Favoris", list(ACTIFS.keys()), index=0,
+            help="Une sélection d'actifs courants pour démarrer vite. "
+                 "Pour tout le reste, utilise la recherche au-dessus.")
         ticker = ACTIFS[choix_actif]
         nom_actif = choix_actif
 else:
-    choix_actif = st.sidebar.selectbox("Favoris", list(ACTIFS.keys()), index=0)
+    choix_actif = st.sidebar.selectbox(
+            "Favoris", list(ACTIFS.keys()), index=0,
+            help="Une sélection d'actifs courants pour démarrer vite. "
+                 "Pour tout le reste, utilise la recherche au-dessus.")
     ticker = ACTIFS[choix_actif]
     nom_actif = choix_actif
 
 periode = st.sidebar.selectbox(
     "Période testée", ["1y", "2y", "5y", "10y"], index=1,
-    format_func=lambda p: {"1y": "1 an", "2y": "2 ans", "5y": "5 ans", "10y": "10 ans"}[p])
+    format_func=lambda p: {"1y": "1 an", "2y": "2 ans", "5y": "5 ans", "10y": "10 ans"}[p],
+    help="Durée d'historique sur laquelle la stratégie est rejouée. "
+         "Teste toujours plusieurs durées : une stratégie qui gagne sur 1 an "
+         "peut perdre sur 5 ans.")
 
 st.sidebar.markdown("---")
 rubrique("Stratégie")
-nom_strat = st.sidebar.selectbox("Méthode testée", list(STRATEGIES.keys()), index=0,
-                                 label_visibility="collapsed")
+nom_strat = st.sidebar.selectbox(
+    "Méthode testée", list(STRATEGIES.keys()), index=0,
+    help="La règle d'achat et de vente qui sera simulée. Son principe est "
+         "rappelé juste en dessous, et ses réglages apparaissent ensuite.")
 strat = STRATEGIES[nom_strat]
 st.sidebar.caption(strat["explication"])
 
 # curseurs propres a la strategie choisie
 params = {}
 for cle, (label, mini, maxi, defaut) in strat["params"].items():
-    params[cle] = st.sidebar.slider(label, mini, maxi, defaut)
+    params[cle] = st.sidebar.slider(label, mini, maxi, defaut, help=AIDE_PARAMS.get(cle))
 if "courte" in params and "longue" in params and params["courte"] >= params["longue"]:
     st.sidebar.error("La moyenne courte doit être plus petite que la longue.")
     st.stop()
@@ -402,7 +436,10 @@ if "courte" in params and "longue" in params and params["courte"] >= params["lon
 st.sidebar.markdown("---")
 rubrique("Capital et frais")
 dev = devise_de(ticker)
-capital = st.sidebar.number_input(f"Capital de départ ({dev})", 1000, 1_000_000, 10_000, step=1000)
+capital = st.sidebar.number_input(
+    f"Capital de départ ({dev})", 1000, 1_000_000, 10_000, step=1000,
+    help="Somme investie au premier signal d'achat. Elle ne change pas les "
+         "pourcentages de performance, seulement les montants affichés.")
 frais = st.sidebar.slider("Frais par opération (%)", 0.0, 1.0, 0.1, 0.05,
                           help="Ce que ton courtier prélève à chaque achat ou vente. 0,1 % est courant.")
 
@@ -411,7 +448,11 @@ rubrique("Gestion du risque")
 stop_actif = st.sidebar.checkbox("Activer le stop-loss", value=False,
                                  help="Vente automatique dès que la perte dépasse un seuil. "
                                       "C'est la base de la gestion du risque chez les traders pro.")
-stop = st.sidebar.slider("Vendre si la perte dépasse (%)", 1, 30, 8, disabled=not stop_actif) if stop_actif else 0
+stop = st.sidebar.slider(
+    "Vendre si la perte dépasse (%)", 1, 30, 8, disabled=not stop_actif,
+    help="Perte maximale tolérée sur une position avant la vente automatique, "
+         "mesurée depuis son prix d'achat. Un seuil serré protège des grosses "
+         "pertes mais coupe aussi des positions qui seraient reparties.") if stop_actif else 0
 if stop_actif:
     st.sidebar.caption(f"Chaque position est coupée automatiquement à −{stop} % "
                        "sous son prix d'achat. On attend ensuite un nouveau signal pour revenir.")
@@ -488,13 +529,25 @@ onglet_bt, onglet_trades, onglet_strats, onglet_actifs = st.tabs(
 # ================================================================= Onglet 1 : résultat
 with onglet_bt:
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Stratégie", f"{r['final_strat']:,.0f} {dev}", f"{r['perf_strat']:+.1%}")
-    c2.metric("Ne rien faire (buy & hold)", f"{r['final_hold']:,.0f} {dev}", f"{r['perf_hold']:+.1%}")
+    c1.metric("Stratégie", f"{fr(r['final_strat'], 0)} {dev}", f"{r['perf_strat']:+.1%}",
+              help="Ce que serait devenu ton capital en suivant tous les signaux "
+                   "de la stratégie, frais de transaction déduits.")
+    c2.metric("Ne rien faire (buy & hold)", f"{fr(r['final_hold'], 0)} {dev}", f"{r['perf_hold']:+.1%}",
+              help="Le même capital, investi au premier jour et laissé tranquille "
+                   "jusqu'à la fin. C'est la référence à battre.")
     c3.metric("Pire baisse subie", f"{r['drawdown_strat']:.1%}",
-              f"vs {r['drawdown_hold']:.1%} sans stratégie", delta_color="off")
-    c4.metric("Trades", f"{r['nb_trades']}")
+              f"vs {r['drawdown_hold']:.1%} sans stratégie", delta_color="off",
+              help="La plus forte chute entre un sommet et le creux qui a suivi. "
+                   "C'est la perte qu'il aurait fallu encaisser sans vendre — "
+                   "souvent plus dure à vivre que le gain final n'est agréable.")
+    c4.metric("Trades", f"{r['nb_trades']}",
+              help="Nombre d'achats déclenchés sur la période. Chaque opération "
+                   "coûte des frais : beaucoup de trades rongent la performance.")
     taux = f"{r['gagnants']}/{r['nb_trades']}" if r["nb_trades"] else "—"
-    c5.metric("Trades gagnants", taux)
+    c5.metric("Trades gagnants", taux,
+              help="Combien de ces opérations se sont soldées par un gain, frais "
+                   "compris. Un taux faible n'est pas rédhibitoire si les gains "
+                   "sont bien plus gros que les pertes.")
 
     if r["perf_strat"] > r["perf_hold"]:
         st.success(f"Sur cette période, **{nom_strat}** a fait mieux que garder {nom_actif} sans rien faire "
@@ -631,7 +684,11 @@ with onglet_actifs:
     for ref in ["S&P 500 (^GSPC)", "Bitcoin (BTC-USD)", "Apple (AAPL)"]:
         if ref in options_multi and ref not in defaut and len(defaut) < 3:
             defaut.append(ref)
-    choix_multi = st.multiselect("Actifs à comparer", list(options_multi.keys()), default=defaut)
+    choix_multi = st.multiselect(
+        "Actifs à comparer", list(options_multi.keys()), default=defaut,
+        help="La même stratégie, avec les mêmes réglages, appliquée à plusieurs "
+             "actifs. C'est le test de robustesse : une bonne stratégie ne "
+             "fonctionne pas que sur un seul titre.")
     if choix_multi:
         lignes = []
         for nom in choix_multi:
