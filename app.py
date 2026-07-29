@@ -43,6 +43,32 @@ def activer_pwa():
 
 CSS_MOBILE = """
 <style>
+  /* On masque le badge "Running" de Streamlit et le bouton Deploy : ils
+     appartiennent a l'outil, pas a l'application. Le menu reste accessible
+     (c'est lui qui contient le choix du theme clair / sombre). */
+  [data-testid="stStatusWidget"] { display: none !important; }
+  [data-testid="stAppDeployButton"] { display: none !important; }
+
+  /* Ecran d'attente maison : un graphique qui se dessine tout seul. */
+  .chargement { display: flex; flex-direction: column; align-items: center;
+                justify-content: center; gap: 1.1rem; padding: 4.5rem 1rem; }
+  .chargement svg { width: 108px; height: 62px; overflow: visible; }
+  .chargement .trace { fill: none; stroke: #2f9e6a; stroke-width: 5;
+                       stroke-linecap: round; stroke-linejoin: round;
+                       stroke-dasharray: 260; stroke-dashoffset: 260;
+                       animation: tracer 1.6s ease-in-out infinite; }
+  .chargement .socle { stroke: currentColor; opacity: .22; stroke-width: 3;
+                       stroke-linecap: round; }
+  .chargement .txt { font-size: .92rem; opacity: .72; letter-spacing: .01em; }
+  @keyframes tracer {
+    0%   { stroke-dashoffset: 260; }
+    55%  { stroke-dashoffset: 0; }
+    100% { stroke-dashoffset: -260; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chargement .trace { animation: none; stroke-dashoffset: 0; }
+  }
+
   /* Sur telephone, 5 indicateurs cote a cote deviennent illisibles :
      on les laisse passer a la ligne au lieu de les comprimer. */
   @media (max-width: 640px) {
@@ -65,10 +91,59 @@ CSS_MOBILE = """
 </style>
 """
 
+ECRAN_ATTENTE = """
+<div class="chargement">
+  <svg viewBox="0 0 108 62" aria-hidden="true">
+    <path class="socle" d="M6 56 H102" />
+    <path class="trace" d="M8 46 L28 34 L46 40 L64 20 L82 26 L100 6" />
+  </svg>
+  <div class="txt">{message}</div>
+</div>
+"""
+
+
+def ecran_attente(message: str):
+    """Remplace le badge 'Running' de Streamlit par une attente qui parle
+    a l'utilisateur. Renvoie le conteneur pour pouvoir l'effacer ensuite."""
+    boite = st.empty()
+    boite.markdown(ECRAN_ATTENTE.format(message=message), unsafe_allow_html=True)
+    return boite
+
+
+def theme_sombre() -> bool:
+    """Thème actif cote navigateur. Repli sur clair si l'info n'est pas encore la."""
+    return getattr(getattr(st, "context", None), "theme", None) is not None \
+        and getattr(st.context.theme, "type", "light") == "dark"
+
+
 activer_pwa()
 st.markdown(CSS_MOBILE, unsafe_allow_html=True)
 
-VERT, ROUGE, GRIS, BLEU, ORANGE, VIOLET = "#2f9e6a", "#d1495b", "#8a94a3", "#3b82f6", "#f59e0b", "#a855f7"
+SOMBRE = theme_sombre()
+VERT = "#2dc57a" if SOMBRE else "#2f9e6a"
+ROUGE = "#e0687a" if SOMBRE else "#d1495b"
+GRIS = "#7b8697" if SOMBRE else "#8a94a3"
+BLEU = "#60a5fa" if SOMBRE else "#3b82f6"
+ORANGE = "#fbbf24" if SOMBRE else "#f59e0b"
+VIOLET = "#c084fc" if SOMBRE else "#a855f7"
+TEXTE = "#e8edf4" if SOMBRE else "#14202e"
+GRILLE = "#243044" if SOMBRE else "#e8ecf2"
+
+
+def style_graphique(fig, hauteur: int):
+    """Fond transparent et couleurs suivant le theme : un graphique clair sur
+    fond sombre (ou l'inverse) est le defaut le plus visible d'une app web."""
+    fig.update_layout(
+        height=hauteur, margin=dict(l=0, r=0, t=10, b=0),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=TEXTE, size=12),
+        legend=dict(bgcolor="rgba(0,0,0,0)"),
+        xaxis=dict(gridcolor=GRILLE, zerolinecolor=GRILLE),
+        yaxis=dict(gridcolor=GRILLE, zerolinecolor=GRILLE),
+        hoverlabel=dict(bgcolor="#16202f" if SOMBRE else "#ffffff",
+                        font_color=TEXTE, bordercolor=GRILLE),
+    )
+    return fig
 
 # ---------------------------------------------------------------- Données
 @st.cache_data(show_spinner=False, ttl=3600)
@@ -196,7 +271,9 @@ if stop_actif:
 st.title("Backtest de stratégies de trading")
 st.caption("Teste des stratégies classiques sur de vrais prix historiques — sans risquer d'argent réel.")
 
+attente = ecran_attente(f"Récupération des cours de {nom_actif}…")
 close = charger_prix(ticker, periode)
+attente.empty()
 if close.empty:
     st.error(f"Aucune donnée pour « {ticker} ». Vérifie le symbole (ex. AAPL, BTC-USD).")
     st.stop()
@@ -255,7 +332,7 @@ with onglet_bt:
                                 line=dict(color=GRIS, width=1.5, dash="dot")))
     fig_eq.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0), yaxis_title=f"Capital ({dev})",
                          hovermode="x unified", legend=dict(orientation="h", y=1.12))
-    st.plotly_chart(fig_eq, width='stretch')
+    st.plotly_chart(style_graphique(fig_eq, fig_eq.layout.height or 320), width='stretch')
 
     st.subheader("Prix, indicateurs et signaux")
     fig = go.Figure()
@@ -274,7 +351,7 @@ with onglet_bt:
                                  marker=dict(color=ROUGE, size=11, symbol="triangle-down")))
     fig.update_layout(height=380, margin=dict(l=0, r=0, t=10, b=0), yaxis_title=f"Prix ({dev})",
                       hovermode="x unified", legend=dict(orientation="h", y=1.12))
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(style_graphique(fig, fig.layout.height or 320), width='stretch')
 
     if "RSI" in indicateurs:
         fig_rsi = go.Figure()
@@ -285,7 +362,7 @@ with onglet_bt:
         fig_rsi.add_hline(y=params.get("vente", 70), line_color=ROUGE, line_dash="dot",
                           annotation_text="zone de vente")
         fig_rsi.update_layout(height=200, margin=dict(l=0, r=0, t=10, b=0), yaxis_title="RSI")
-        st.plotly_chart(fig_rsi, width='stretch')
+        st.plotly_chart(style_graphique(fig_rsi, fig_rsi.layout.height or 320), width='stretch')
 
 # ================================================================= Onglet 2 : trades
 with onglet_trades:
@@ -337,7 +414,7 @@ with onglet_strats:
         fig_cmp.add_trace(go.Scatter(x=eq.index, y=eq, name=nom.split(" (")[0].split(" — ")[0]))
     fig_cmp.update_layout(height=380, margin=dict(l=0, r=0, t=10, b=0), yaxis_title=f"Capital ({dev})",
                           hovermode="x unified", legend=dict(orientation="h", y=1.18))
-    st.plotly_chart(fig_cmp, width='stretch')
+    st.plotly_chart(style_graphique(fig_cmp, fig_cmp.layout.height or 320), width='stretch')
 
 # ================================================================= Onglet 4 : comparateur d'actifs
 with onglet_actifs:
@@ -374,7 +451,7 @@ with onglet_actifs:
                                      name="Ne rien faire", marker_color=GRIS))
             fig_bar.update_layout(height=340, barmode="group", yaxis_tickformat="+.0%",
                                   margin=dict(l=0, r=0, t=10, b=0), legend=dict(orientation="h", y=1.15))
-            st.plotly_chart(fig_bar, width='stretch')
+            st.plotly_chart(style_graphique(fig_bar, fig_bar.layout.height or 320), width='stretch')
 
 st.caption("Résultats passés simulés, frais inclus mais hors impôts et écarts d'exécution. "
            "Ceci n'est pas un conseil d'investissement.")

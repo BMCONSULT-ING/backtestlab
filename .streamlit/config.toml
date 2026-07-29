@@ -6,6 +6,25 @@ enableStaticServing = true
 [browser]
 gatherUsageStats = false
 
+# Pas de "base" impose : l'app suit la preference du systeme (clair / sombre)
+# et l'utilisateur peut forcer l'un ou l'autre depuis le menu Parametres.
 [theme]
-base = "light"
 primaryColor = "#2f9e6a"
+font = "sans-serif"
+baseRadius = "0.6rem"
+
+# Palette claire : neutres legerement bleutes, jamais de gris pur.
+[theme.light]
+backgroundColor = "#fbfcfd"
+secondaryBackgroundColor = "#f1f4f8"
+textColor = "#14202e"
+borderColor = "#e2e8f0"
+primaryColor = "#238a5c"
+
+# Palette sombre : reprend l'encre de l'icone du projet.
+[theme.dark]
+backgroundColor = "#0d1420"
+secondaryBackgroundColor = "#16202f"
+textColor = "#e8edf4"
+borderColor = "#243044"
+primaryColor = "#2dc57a"
