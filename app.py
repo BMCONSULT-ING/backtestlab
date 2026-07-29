@@ -13,6 +13,61 @@ from strategies import STRATEGIES, backtester
 
 st.set_page_config(page_title="Backtest Trading", page_icon="📈", layout="wide")
 
+
+# ------------------------------------------------------- PWA + confort mobile
+def activer_pwa():
+    """Rend l'app installable sur l'ecran d'accueil (mode plein ecran, sans barre
+    d'adresse). Les balises doivent aller dans le <head> de la page parente :
+    on passe par une iframe dont le script y accede en JavaScript."""
+    st.iframe("""
+    <script>
+      const head = window.parent.document.head;
+      const ajouter = (balise, attrs) => {
+        const sel = balise + Object.entries(attrs)
+              .map(([k, v]) => `[${k}="${v}"]`).join('');
+        if (head.querySelector(sel)) return;            // deja injecte
+        const el = window.parent.document.createElement(balise);
+        Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+        head.appendChild(el);
+      };
+      ajouter('link', {rel: 'manifest', href: '/app/static/manifest.json'});
+      ajouter('link', {rel: 'apple-touch-icon', href: '/app/static/icon-192.png'});
+      ajouter('meta', {name: 'apple-mobile-web-app-capable', content: 'yes'});
+      ajouter('meta', {name: 'apple-mobile-web-app-title', content: 'Backtest'});
+      ajouter('meta', {name: 'apple-mobile-web-app-status-bar-style',
+                       content: 'black-translucent'});
+      ajouter('meta', {name: 'mobile-web-app-capable', content: 'yes'});
+    </script>
+    """, height=1)   # st.iframe exige une hauteur > 0 : 1 pixel, invisible
+
+
+CSS_MOBILE = """
+<style>
+  /* Sur telephone, 5 indicateurs cote a cote deviennent illisibles :
+     on les laisse passer a la ligne au lieu de les comprimer. */
+  @media (max-width: 640px) {
+    [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: .5rem !important; }
+    [data-testid="stColumn"] { flex: 1 1 45% !important; min-width: 45% !important; }
+    .block-container { padding: 1rem .8rem 3rem !important; }
+    [data-testid="stMetricValue"] { font-size: 1.2rem !important; }
+    [data-testid="stMetricLabel"] p { font-size: .72rem !important; }
+    [data-testid="stMetricDelta"] { font-size: .75rem !important; }
+    h1 { font-size: 1.35rem !important; }
+    h2, h3 { font-size: 1.05rem !important; }
+    /* les onglets tiennent sur une ligne defilante plutot que de deborder */
+    [data-testid="stTabs"] [role="tablist"] { overflow-x: auto; scrollbar-width: none; }
+    [data-testid="stTabs"] [role="tablist"]::-webkit-scrollbar { display: none; }
+  }
+  /* Confort tactile : cibles plus grandes au doigt */
+  @media (pointer: coarse) {
+    [data-testid="stTabs"] [role="tab"] { padding: .55rem .8rem; }
+  }
+</style>
+"""
+
+activer_pwa()
+st.markdown(CSS_MOBILE, unsafe_allow_html=True)
+
 VERT, ROUGE, GRIS, BLEU, ORANGE, VIOLET = "#2f9e6a", "#d1495b", "#8a94a3", "#3b82f6", "#f59e0b", "#a855f7"
 
 # ---------------------------------------------------------------- Données
@@ -33,6 +88,19 @@ ACTIFS = {
 TYPES_FR = {"EQUITY": "Action", "ETF": "ETF", "CRYPTOCURRENCY": "Crypto",
             "INDEX": "Indice", "FUTURE": "Mat. première", "CURRENCY": "Devise",
             "MUTUALFUND": "Fonds", "OPTION": "Option"}
+
+# Un actif cote dans SA devise : LVMH à Paris en euros, Apple à New York en dollars.
+SYMBOLES_DEVISE = {"USD": "$", "EUR": "€", "GBP": "£", "JPY": "¥",
+                   "CHF": "CHF", "CAD": "C$", "AUD": "A$", "HKD": "HK$"}
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def devise_de(ticker: str) -> str:
+    """Devise de cotation de l'actif (€, $, £…). Repli sur $ si Yahoo ne la donne pas."""
+    try:
+        code = yf.Ticker(ticker).fast_info.get("currency")
+        return SYMBOLES_DEVISE.get(code, code or "$")
+    except Exception:
+        return "$"
 
 # Ce qu'un trader veut voir en premier : actions et ETF avant les fonds obscurs.
 PRIORITE_TYPE = {"EQUITY": 0, "CRYPTOCURRENCY": 1, "ETF": 2, "INDEX": 3,
@@ -111,7 +179,8 @@ if "courte" in params and "longue" in params and params["courte"] >= params["lon
     st.stop()
 
 st.sidebar.markdown("---")
-capital = st.sidebar.number_input("Capital de départ ($)", 1000, 1_000_000, 10_000, step=1000)
+dev = devise_de(ticker)
+capital = st.sidebar.number_input(f"Capital de départ ({dev})", 1000, 1_000_000, 10_000, step=1000)
 frais = st.sidebar.slider("Frais par opération (%)", 0.0, 1.0, 0.1, 0.05,
                           help="Ce que ton courtier prélève à chaque achat ou vente. 0,1 % est courant.")
 
@@ -142,8 +211,8 @@ onglet_bt, onglet_trades, onglet_strats, onglet_actifs = st.tabs(
 # ================================================================= Onglet 1 : résultat
 with onglet_bt:
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Stratégie", f"{r['final_strat']:,.0f} $", f"{r['perf_strat']:+.1%}")
-    c2.metric("Ne rien faire (buy & hold)", f"{r['final_hold']:,.0f} $", f"{r['perf_hold']:+.1%}")
+    c1.metric("Stratégie", f"{r['final_strat']:,.0f} {dev}", f"{r['perf_strat']:+.1%}")
+    c2.metric("Ne rien faire (buy & hold)", f"{r['final_hold']:,.0f} {dev}", f"{r['perf_hold']:+.1%}")
     c3.metric("Pire baisse subie", f"{r['drawdown_strat']:.1%}",
               f"vs {r['drawdown_hold']:.1%} sans stratégie", delta_color="off")
     c4.metric("Trades", f"{r['nb_trades']}")
@@ -178,9 +247,9 @@ with onglet_bt:
                                 line=dict(color=VERT, width=2)))
     fig_eq.add_trace(go.Scatter(x=r["eq_hold"].index, y=r["eq_hold"], name="Ne rien faire",
                                 line=dict(color=GRIS, width=1.5, dash="dot")))
-    fig_eq.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0), yaxis_title="Capital ($)",
+    fig_eq.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=0), yaxis_title=f"Capital ({dev})",
                          hovermode="x unified", legend=dict(orientation="h", y=1.12))
-    st.plotly_chart(fig_eq, use_container_width=True)
+    st.plotly_chart(fig_eq, width='stretch')
 
     st.subheader("📊 Prix, indicateurs et signaux")
     fig = go.Figure()
@@ -197,9 +266,9 @@ with onglet_bt:
     if r["ventes"]:
         fig.add_trace(go.Scatter(x=r["ventes"], y=close.loc[r["ventes"]], mode="markers", name="Vente",
                                  marker=dict(color=ROUGE, size=11, symbol="triangle-down")))
-    fig.update_layout(height=380, margin=dict(l=0, r=0, t=10, b=0), yaxis_title="Prix",
+    fig.update_layout(height=380, margin=dict(l=0, r=0, t=10, b=0), yaxis_title=f"Prix ({dev})",
                       hovermode="x unified", legend=dict(orientation="h", y=1.12))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     if "RSI" in indicateurs:
         fig_rsi = go.Figure()
@@ -210,7 +279,7 @@ with onglet_bt:
         fig_rsi.add_hline(y=params.get("vente", 70), line_color=ROUGE, line_dash="dot",
                           annotation_text="zone de vente")
         fig_rsi.update_layout(height=200, margin=dict(l=0, r=0, t=10, b=0), yaxis_title="RSI")
-        st.plotly_chart(fig_rsi, use_container_width=True)
+        st.plotly_chart(fig_rsi, width='stretch')
 
 # ================================================================= Onglet 2 : trades
 with onglet_trades:
@@ -225,8 +294,10 @@ with onglet_trades:
             if isinstance(val, str) and val.startswith("-"):
                 return f"color: {ROUGE}; font-weight: 600"
             return ""
-        st.dataframe(r["trades"].style.map(colorer, subset=["Resultat"]),
-                     use_container_width=True, hide_index=True)
+        table = r["trades"].rename(columns={"Prix d'achat": f"Prix d'achat ({dev})",
+                                            "Prix de vente": f"Prix de vente ({dev})"})
+        st.dataframe(table.style.map(colorer, subset=["Resultat"]),
+                     width='stretch', hide_index=True)
 
 # ================================================================= Onglet 3 : comparateur de stratégies
 with onglet_strats:
@@ -249,7 +320,7 @@ with onglet_strats:
     tableau.insert(0, "Rang", ["🥇", "🥈", "🥉"] + [str(i) for i in range(4, len(tableau) + 1)])
     meilleure = tableau.iloc[0]["Stratégie"]
     st.dataframe(tableau.style.format({"Gain": "{:+.1%}", "Pire baisse": "{:.1%}"}),
-                 use_container_width=True, hide_index=True)
+                 width='stretch', hide_index=True)
     st.success(f"Sur cette période et cet actif, la meilleure approche était : **{meilleure}**. "
                "⚠️ Ça ne garantit rien pour l'avenir — change d'actif et de période pour voir si elle reste bonne.")
 
@@ -258,9 +329,9 @@ with onglet_strats:
                                  line=dict(color=GRIS, width=1.5, dash="dot")))
     for nom, eq in courbes.items():
         fig_cmp.add_trace(go.Scatter(x=eq.index, y=eq, name=nom.split(" (")[0].split(" — ")[0]))
-    fig_cmp.update_layout(height=380, margin=dict(l=0, r=0, t=10, b=0), yaxis_title="Capital ($)",
+    fig_cmp.update_layout(height=380, margin=dict(l=0, r=0, t=10, b=0), yaxis_title=f"Capital ({dev})",
                           hovermode="x unified", legend=dict(orientation="h", y=1.18))
-    st.plotly_chart(fig_cmp, use_container_width=True)
+    st.plotly_chart(fig_cmp, width='stretch')
 
 # ================================================================= Onglet 4 : comparateur d'actifs
 with onglet_actifs:
@@ -289,7 +360,7 @@ with onglet_actifs:
         if lignes:
             df_multi = pd.DataFrame(lignes)
             st.dataframe(df_multi.style.format({"Stratégie": "{:+.1%}", "Ne rien faire": "{:+.1%}"}),
-                         use_container_width=True, hide_index=True)
+                         width='stretch', hide_index=True)
             fig_bar = go.Figure()
             fig_bar.add_trace(go.Bar(x=df_multi["Actif"], y=df_multi["Stratégie"],
                                      name="Stratégie", marker_color=VERT))
@@ -297,7 +368,7 @@ with onglet_actifs:
                                      name="Ne rien faire", marker_color=GRIS))
             fig_bar.update_layout(height=340, barmode="group", yaxis_tickformat="+.0%",
                                   margin=dict(l=0, r=0, t=10, b=0), legend=dict(orientation="h", y=1.15))
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, width='stretch')
 
 st.caption("⚠️ Résultats passés simulés, frais inclus mais hors impôts et écarts d'exécution. "
            "Ceci n'est pas un conseil d'investissement.")

@@ -1,5 +1,7 @@
 [server]
 headless = true
+# Sert le dossier ./static sur /app/static/ (icones et manifeste PWA).
+enableStaticServing = true
 
 [browser]
 gatherUsageStats = false
