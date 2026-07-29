@@ -4,6 +4,8 @@ Backtest Trading — application web (Streamlit) — v2
 comparateur de strategies et comparateur d'actifs.
 Lancer :  streamlit run app.py
 """
+import time
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -264,10 +266,19 @@ def style_graphique(fig, hauteur: int):
 # ---------------------------------------------------------------- Données
 @st.cache_data(show_spinner=False, ttl=3600)
 def charger_prix(ticker: str, periode: str) -> pd.Series:
-    df = yf.download(ticker, period=periode, progress=False, auto_adjust=True)
-    if df is None or df.empty:
-        return pd.Series(dtype=float)
-    return df["Close"].squeeze().dropna()
+    """Yahoo renvoie parfois un resultat vide de facon passagere (limitation de
+    debit). On retente une fois avant d'abandonner ; l'appelant vide le cache en
+    cas d'echec pour ne pas figer une erreur temporaire pendant une heure."""
+    for tentative in range(2):
+        try:
+            df = yf.download(ticker, period=periode, progress=False, auto_adjust=True)
+        except Exception:
+            df = None
+        if df is not None and not df.empty:
+            return df["Close"].squeeze().dropna()
+        if tentative == 0:
+            time.sleep(1.2)
+    return pd.Series(dtype=float)
 
 ACTIFS = {
     "Apple (AAPL)": "AAPL", "Microsoft (MSFT)": "MSFT", "Tesla (TSLA)": "TSLA",
@@ -418,7 +429,13 @@ attente = ecran_attente(f"Récupération des cours de {nom_actif}…")
 close = charger_prix(ticker, periode)
 attente.empty()
 if close.empty:
-    st.error(f"Aucune donnée pour « {ticker} ». Vérifie le symbole (ex. AAPL, BTC-USD).")
+    # Un echec ne doit jamais rester en cache : sinon un incident passager chez
+    # Yahoo bloque l'actif pendant toute la duree du ttl.
+    charger_prix.clear()
+    st.error(f"Aucune donnée reçue pour « {ticker} ». "
+             "Cela vient souvent d'une limitation temporaire de Yahoo Finance : "
+             "recharge la page dans quelques secondes, ou vérifie le symbole.",
+             icon=":material/cloud_off:")
     st.stop()
 
 position_brute, indicateurs = strat["fn"](close, **params)

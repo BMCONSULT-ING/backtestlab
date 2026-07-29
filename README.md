@@ -15,10 +15,26 @@ sans risquer d'argent réel. Construite avec [Streamlit](https://streamlit.io).
 
 ```bash
 pip install -r requirements.txt
+python tools/patch_loader.py
 streamlit run app.py
 ```
 
 L'application s'ouvre sur http://localhost:8501
+
+### À propos de `tools/patch_loader.py`
+
+Ce script ajoute un écran d'accueil aux couleurs du projet, affiché **pendant que
+Streamlit démarre** — avant même que le code de l'application s'exécute. Il s'efface
+tout seul dès que le tableau de bord est dessiné.
+
+Pour cela il modifie `index.html` **à l'intérieur du paquet Streamlit installé**.
+Deux conséquences :
+
+- Il doit être **rejoué après chaque `pip install`**, sinon la réinstallation
+  l'écrase. Le `render.yaml` s'en charge automatiquement au déploiement.
+- Il est sans risque : idempotent (relançable), il refuse d'agir s'il ne reconnaît
+  pas la structure du fichier, et `python tools/patch_loader.py --retirer` remet
+  la page d'origine.
 
 ## Déployer sur Render
 

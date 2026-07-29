@@ -7,7 +7,9 @@ services:
     plan: free
     region: frankfurt          # serveur en Europe (latence plus faible depuis la France)
 
-    buildCommand: pip install -r requirements.txt
+    # Le patch de l'ecran d'accueil modifie un fichier DE la bibliotheque Streamlit :
+    # il doit donc etre rejoue apres chaque installation, sinon il est ecrase.
+    buildCommand: pip install -r requirements.txt && python tools/patch_loader.py
 
     # Streamlit doit ecouter sur le port fourni par Render et sur toutes les interfaces,
     # sinon le service est considere comme "ne repond pas" et le deploiement echoue.
