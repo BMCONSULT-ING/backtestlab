@@ -317,12 +317,69 @@ def charger_prix(ticker: str, periode: str) -> pd.Series:
             time.sleep(1.2)
     return pd.Series(dtype=float)
 
-ACTIFS = {
-    "Apple (AAPL)": "AAPL", "Microsoft (MSFT)": "MSFT", "Tesla (TSLA)": "TSLA",
-    "Nvidia (NVDA)": "NVDA", "Amazon (AMZN)": "AMZN", "Google (GOOGL)": "GOOGL",
-    "Bitcoin (BTC-USD)": "BTC-USD", "Ethereum (ETH-USD)": "ETH-USD",
-    "CAC 40 (^FCHI)": "^FCHI", "S&P 500 (^GSPC)": "^GSPC", "Or (GC=F)": "GC=F",
+# Catalogue par marche. Chaque symbole a ete verifie : il renvoie bien un
+# historique exploitable sur 2 ans. Ce qui n'a pas passe le test n'est pas ici
+# (TUNINDEX, MASI marocain et Tadawul ne sont pas couverts par Yahoo Finance).
+CATALOGUE = {
+    "Indices — Amérique du Nord": {
+        "S&P 500": "^GSPC", "Nasdaq Composite": "^IXIC", "Nasdaq 100": "^NDX",
+        "Dow Jones": "^DJI", "Russell 2000": "^RUT", "VIX (indice de peur)": "^VIX",
+        "TSX Toronto": "^GSPTSE",
+    },
+    "Indices — Europe": {
+        "CAC 40 (Paris)": "^FCHI", "DAX 40 (Francfort)": "^GDAXI",
+        "FTSE 100 (Londres)": "^FTSE", "Euro Stoxx 50": "^STOXX50E",
+        "AEX (Amsterdam)": "^AEX", "IBEX 35 (Madrid)": "^IBEX", "SMI (Zurich)": "^SSMI",
+    },
+    "Indices — Asie & émergents": {
+        "Nikkei 225 (Tokyo)": "^N225", "Hang Seng (Hong Kong)": "^HSI",
+        "Shanghai Composite": "000001.SS", "Nifty 50 (Inde)": "^NSEI",
+        "BSE Sensex (Inde)": "^BSESN", "ASX 200 (Australie)": "^AXJO",
+        "Bovespa (Brésil)": "^BVSP", "IPC (Mexique)": "^MXX",
+        "TA-125 (Tel Aviv)": "^TA125.TA",
+    },
+    "Actions — États-Unis": {
+        "Apple": "AAPL", "Microsoft": "MSFT", "Nvidia": "NVDA", "Alphabet (Google)": "GOOGL",
+        "Amazon": "AMZN", "Meta": "META", "Tesla": "TSLA", "Netflix": "NFLX",
+        "AMD": "AMD", "Intel": "INTC", "JPMorgan": "JPM", "Coca-Cola": "KO",
+    },
+    "Actions — Europe": {
+        "LVMH": "MC.PA", "TotalEnergies": "TTE.PA", "L'Oréal": "OR.PA", "Airbus": "AIR.PA",
+        "Sanofi": "SAN.PA", "BNP Paribas": "BNP.PA", "Hermès": "RMS.PA",
+        "Schneider Electric": "SU.PA", "Safran": "SAF.PA", "SAP (Allemagne)": "SAP.DE",
+        "Siemens (Allemagne)": "SIE.DE", "ASML (Pays-Bas)": "ASML.AS",
+        "Nestlé (Suisse)": "NESN.SW", "Shell (Londres)": "SHEL.L",
+        "AstraZeneca (Londres)": "AZN.L",
+    },
+    "Cryptomonnaies": {
+        "Bitcoin": "BTC-USD", "Ethereum": "ETH-USD", "Solana": "SOL-USD",
+        "XRP": "XRP-USD", "BNB": "BNB-USD", "Cardano": "ADA-USD",
+        "Dogecoin": "DOGE-USD", "Avalanche": "AVAX-USD", "Chainlink": "LINK-USD",
+        "Polkadot": "DOT-USD",
+    },
+    "ETF (fonds indiciels)": {
+        "SPY — S&P 500": "SPY", "QQQ — Nasdaq 100": "QQQ", "VOO — S&P 500 (Vanguard)": "VOO",
+        "IWM — Russell 2000": "IWM", "VT — Monde entier": "VT",
+        "EEM — Pays émergents": "EEM", "ARKK — Innovation": "ARKK", "GLD — Or": "GLD",
+        "CW8 — MSCI World (Paris)": "CW8.PA", "ESE — S&P 500 (Paris)": "ESE.PA",
+        "PANX — Nasdaq (Paris)": "PANX.PA",
+    },
+    "Matières premières": {
+        "Or": "GC=F", "Argent": "SI=F", "Platine": "PL=F", "Cuivre": "HG=F",
+        "Pétrole WTI": "CL=F", "Pétrole Brent": "BZ=F", "Gaz naturel": "NG=F",
+        "Blé": "ZW=F", "Café": "KC=F", "Cacao": "CC=F",
+    },
+    "Devises": {
+        "EUR / USD": "EURUSD=X", "GBP / USD": "GBPUSD=X", "USD / JPY": "USDJPY=X",
+        "USD / CHF": "USDCHF=X", "USD / CAD": "USDCAD=X",
+        "EUR / Dinar tunisien": "EURTND=X", "USD / Dinar tunisien": "USDTND=X",
+        "EUR / Dirham marocain": "EURMAD=X",
+    },
 }
+
+# Version a plat, pour le comparateur multi-actifs.
+ACTIFS = {f"{nom} ({sym})": sym
+          for marche in CATALOGUE.values() for nom, sym in marche.items()}
 
 TYPES_FR = {"EQUITY": "Action", "ETF": "ETF", "CRYPTOCURRENCY": "Crypto",
             "INDEX": "Indice", "FUTURE": "Mat. première", "CURRENCY": "Devise",
@@ -374,6 +431,21 @@ def chercher_actifs(requete: str) -> dict:
     lignes.sort(key=lambda x: x[0])
     return {lib: sym for _, lib, sym in lignes[:12]}
 
+def choisir_par_marche():
+    """Selection en deux temps : d'abord le marche, puis l'instrument. Une liste
+    unique de 90 entrees serait illisible ; par marche, chacune tient a l'ecran."""
+    marche = st.sidebar.selectbox(
+        "Marché", list(CATALOGUE.keys()), index=0,
+        help="Parcours les marchés par famille : indices, actions, cryptos, ETF, "
+             "matières premières et devises. Pour un titre précis, utilise plutôt "
+             "la recherche au-dessus.")
+    instruments = CATALOGUE[marche]
+    nom = st.sidebar.selectbox(f"{len(instruments)} instruments", list(instruments.keys()),
+                               index=0, label_visibility="collapsed")
+    sym = instruments[nom]
+    return nom, sym, f"{nom} ({sym})"
+
+
 # ---------------------------------------------------------------- Barre latérale
 rubrique("Instrument")
 
@@ -394,20 +466,10 @@ if recherche.strip():
         ticker = resultats[choix_actif]
         nom_actif = choix_actif
     else:
-        st.sidebar.warning("Rien trouvé — essaie un autre nom ou choisis un favori.")
-        choix_actif = st.sidebar.selectbox(
-            "Favoris", list(ACTIFS.keys()), index=0,
-            help="Une sélection d'actifs courants pour démarrer vite. "
-                 "Pour tout le reste, utilise la recherche au-dessus.")
-        ticker = ACTIFS[choix_actif]
-        nom_actif = choix_actif
+        st.sidebar.warning("Rien trouvé — essaie un autre nom, ou parcours les marchés.")
+        choix_actif, ticker, nom_actif = choisir_par_marche()
 else:
-    choix_actif = st.sidebar.selectbox(
-            "Favoris", list(ACTIFS.keys()), index=0,
-            help="Une sélection d'actifs courants pour démarrer vite. "
-                 "Pour tout le reste, utilise la recherche au-dessus.")
-    ticker = ACTIFS[choix_actif]
-    nom_actif = choix_actif
+    choix_actif, ticker, nom_actif = choisir_par_marche()
 
 periode = st.sidebar.selectbox(
     "Période testée", ["1y", "2y", "5y", "10y"], index=1,
